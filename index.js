@@ -33,16 +33,45 @@ async function run() {
 
         // Appointment Data
         app.get('/appointmentOptions', async (req, res) => {
+            const date = req.query.date;
             const query = {};
             const options = await appointmentOptionCollection
                 .find(query)
                 .toArray();
+            const bookingQuery = { appointmentDate: date };
+            const alreadyBooked = await bookingsCollection
+                .find(bookingQuery)
+                .toArray();
+            options.map((option) => {
+                const optionBooked = alreadyBooked.filter(
+                    (book) => book.treatment === option.name
+                );
+                const bookedSlots = optionBooked.map((book) => book.slot);
+                const remainingSlots = option.slots.filter(
+                    (slot) => !bookedSlots.includes(slot)
+                );
+                option.slots = remainingSlots;
+            });
             res.send(options);
         });
-
+        // Booking Data
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
-            console.log(booking);
+            const query = {
+                email: booking.email,
+                appointmentDate: booking.appointmentDate,
+                treatment: booking.treatment,
+            };
+
+            const alreadyBooked = await bookingsCollection
+                .find(query)
+                .toArray();
+
+            if (alreadyBooked.length) {
+                const message = `You Already Have a Booking on ${booking.appointmentDate}`;
+                return res.send({ acknowledged: false, message });
+            }
+
             const result = await bookingsCollection.insertOne(booking);
             res.send(result);
         });
