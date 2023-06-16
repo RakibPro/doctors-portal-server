@@ -54,6 +54,9 @@ const run = async () => {
             .db('doctorsPortal')
             .collection('bookings');
         const usersCollection = client.db('doctorsPortal').collection('users');
+        const doctorsCollection = client
+            .db('doctorsPortal')
+            .collection('doctors');
 
         // Appointment API
         app.get('/appointmentOptions', async (req, res) => {
@@ -77,6 +80,15 @@ const run = async () => {
                 option.slots = remainingSlots;
             });
             res.send(options);
+        });
+
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {};
+            const result = await appointmentOptionCollection
+                .find(query)
+                .project({ name: 1 })
+                .toArray();
+            res.send(result);
         });
 
         // Booking API
@@ -121,9 +133,7 @@ const run = async () => {
             const query = { email: email };
             const user = await usersCollection.findOne(query);
             if (user) {
-                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, {
-                    expiresIn: '1h',
-                });
+                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN);
                 return res.send({ accessToken: token });
             }
             res.status(403).send({ accessToken: '' });
@@ -170,6 +180,18 @@ const run = async () => {
                 updatedDoc,
                 options
             );
+            res.send(result);
+        });
+        // Doctors API
+        app.get('/doctors', async (req, res) => {
+            const query = {};
+            const doctors = await doctorsCollection.find(query).toArray();
+            res.send(doctors);
+        });
+
+        app.post('/doctors', async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorsCollection.insertOne(doctor);
             res.send(result);
         });
     } finally {
