@@ -9,6 +9,8 @@ const {
 } = require('mongodb');
 require('dotenv').config();
 
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
+
 const port = process.env.PORT || 5000;
 
 const app = express();
@@ -57,6 +59,9 @@ const run = async () => {
         const doctorsCollection = client
             .db('doctorsPortal')
             .collection('doctors');
+        const paymentsCollection = client
+            .db('doctorsPortal')
+            .collection('payments');
 
         // Middleware
         // TODO: Make sure to use verifyAdmin after verifyJWT
@@ -118,6 +123,13 @@ const run = async () => {
             res.send(bookings);
         });
 
+        app.get('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const booking = await bookingsCollection.findOne(query);
+            res.send(booking);
+        });
+
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
             const query = {
@@ -137,6 +149,47 @@ const run = async () => {
             }
 
             const result = await bookingsCollection.insertOne(booking);
+            res.send(result);
+        });
+
+        // Delete Booked Appointment
+        app.delete('/bookings/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await bookingsCollection.deleteOne(filter);
+            res.send(result);
+        });
+
+        // Payment API
+        app.post('/create-payment-intent', async (req, res) => {
+            const booking = req.body;
+            const price = booking.price;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                currency: 'usd',
+                amount: amount,
+                payment_method_types: ['card'],
+            });
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentsCollection.insertOne(payment);
+            const id = payment.bookingId;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId,
+                },
+            };
+            const updateResult = await bookingsCollection.updateOne(
+                filter,
+                updatedDoc
+            );
             res.send(result);
         });
 
@@ -193,6 +246,7 @@ const run = async () => {
                 res.send(result);
             }
         );
+
         // Doctors API
         app.get('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
             const query = {};
@@ -208,8 +262,8 @@ const run = async () => {
         // Delete Doctor
         app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: new ObjectId(id) };
-            const result = await doctorsCollection.deleteOne(query);
+            const filter = { _id: new ObjectId(id) };
+            const result = await doctorsCollection.deleteOne(filter);
             res.send(result);
         });
     } finally {
